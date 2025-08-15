@@ -16,7 +16,7 @@ VADOO_API_KEY = os.getenv("VADOO_API_KEY", "")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "").rstrip("/")
 REQUEST_TIMEOUT = 60
 USE_MOCK_ON_FAIL = True
-MOCK_VIDEO_URL = "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4"
+MOCK_VIDEO_URL = False
 
 # Vadoo durations start at 30–60s; UI loops first N seconds for demo
 VADOO_DEFAULT_DURATION = "30-60"
