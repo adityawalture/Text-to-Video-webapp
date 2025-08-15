@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Video Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main>
+    <header class="header">
+      <h1>AI Video Generator</h1>
+      <span id="sourcePill" class="pill" style="display:none"></span>
+    </header>
+    <p class="hint">Enter a prompt and pick a style. A helpful template is automatically added (e.g., cinematic, high quality).</p>
+
+    <section class="controls">
+      <textarea id="prompt" rows="3" placeholder="e.g., A drone shot over misty mountains at sunrise"></textarea>
+
+      <div class="row">
+        <label for="style">Style</label>
+        <select id="style">
+          <option value="cinematic" selected>Cinematic (default)</option>
+          <option value="anime">Anime</option>
+          <option value="realism">Realism</option>
+        </select>
+
+        <label for="duration">Playback</label>
+        <select id="duration">
+          <option value="5">5s</option>
+          <option value="6">6s</option>
+          <option value="7">7s</option>
+          <option value="8" selected>8s</option>
+          <option value="9">9s</option>
+          <option value="10">10s</option>
+        </select>
+
+        <button id="genBtn">Generate</button>
+        <span id="spinner" class="spinner" aria-hidden="true"></span>
+      </div>
+    </section>
+
+    <section id="result" class="result"></section>
+
+    <section class="history">
+      <h3>History</h3>
+      <div id="historyGrid" class="grid"></div>
+    </section>
+  </main>
+
+<script>
+const BACKEND_URL = location.hostname.includes("localhost")
+  ? "http://127.0.0.1:8000"
+  : "https://YOUR-BACKEND-DOMAIN"; // ← replace with your deployed API hostname
+
+const spinner = document.getElementById("spinner");
+const genBtn = document.getElementById("genBtn");
+const resultDiv = document.getElementById("result");
+const historyGrid = document.getElementById("historyGrid");
+const sourcePill = document.getElementById("sourcePill");
+
+function setLoading(isLoading) {
+  spinner.style.display = isLoading ? "inline-block" : "none";
+  genBtn.disabled = isLoading;
+}
+
+function saveHistory(item) {
+  const key = "ai_video_history_v1";
+  const arr = JSON.parse(localStorage.getItem(key) || "[]");
+  arr.unshift(item);
+  localStorage.setItem(key, JSON.stringify(arr.slice(0, 20)));
+  renderHistory();
+}
+
+function renderHistory() {
+  const arr = JSON.parse(localStorage.getItem("ai_video_history_v1") || "[]");
+  historyGrid.innerHTML = arr.map((x, idx) => {
+    const date = new Date(x.ts).toLocaleString();
+    return `
+      <div class="card" data-idx="${idx}">
+        <video class="thumb" muted loop src="${x.video_url}"></video>
+        <div class="prompt" title="${x.prompt}">${x.prompt}</div>
+        <div class="meta">${x.style} • ${date}</div>
+        <button class="ghost" onclick="loadFromHistory(${idx})">Load</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function showVideo(url, sourceLabel = "") {
+  sourcePill.style.display = sourceLabel ? "inline-block" : "none";
+  sourcePill.textContent = sourceLabel ? sourceLabel : "";
+  resultDiv.innerHTML = url
+    ? `<video id="mainVideo" controls autoplay loop src="${url}"></video>`
+    : "";
+}
+
+// Limit playback to first N seconds (looping)
+function limitPlaybackTo(seconds) {
+  const vid = document.getElementById("mainVideo");
+  if (!vid) return;
+  const end = Math.max(1, Math.min(10, seconds));
+  vid.onloadedmetadata = () => { vid.currentTime = 0; };
+  vid.ontimeupdate = () => {
+    if (vid.currentTime >= end) {
+      vid.currentTime = 0;
+      vid.play();
+    }
+  };
+}
+
+async function callGenerateWithRetry(formData, maxRetries = 3, baseDelay = 800) {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    const res = await fetch(`${BACKEND_URL}/generate-video`, { method: "POST", body: formData });
+    if (!res.ok) {
+      let msg = "Request failed";
+      try { const j = await res.json(); msg = j.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+
+    if (data.status === "rate_limited") {
+      if (attempt === maxRetries) return data;
+      const delay = baseDelay * Math.pow(2, attempt); // 800, 1600, 3200...
+      await new Promise(r => setTimeout(r, delay));
+      attempt++;
+      continue;
+    }
+    return data;
+  }
+}
+
+async function generate() {
+  const prompt = document.getElementById("prompt").value.trim();
+  const style = document.getElementById("style").value;
+  const duration = document.getElementById("duration").value;
+
+  if (!prompt) {
+    alert("Please enter a prompt.");
+    return;
+  }
+
+  setLoading(true);
+  showVideo("", "");
+
+  const fd = new FormData();
+  fd.append("prompt", prompt);
+  fd.append("style", style);
+  fd.append("duration", duration);
+
+  try {
+    const data = await callGenerateWithRetry(fd);
+    if (data.status === "success") {
+      showVideo(data.video_url, data.source ? `Source: ${data.source}` : "");
+      saveHistory({ prompt, style, video_url: data.video_url, ts: Date.now() });
+      limitPlaybackTo(Number(duration) || 8);
+      if (data.note) console.log("NOTE:", data.note);
+    } else if (data.status === "rate_limited") {
+      alert("The provider is rate-limiting. Please try again shortly.");
+    } else {
+      alert("Error: " + (data.message || "Unknown error"));
+    }
+  } catch (err) {
+    alert("Failed: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function loadFromHistory(idx) {
+  const arr = JSON.parse(localStorage.getItem("ai_video_history_v1") || "[]");
+  const item = arr[idx];
+  if (!item) return;
+  document.getElementById("prompt").value = item.prompt;
+  document.getElementById("style").value = item.style;
+  showVideo(item.video_url, "Source: history");
+}
+
+genBtn.addEventListener("click", generate);
+renderHistory();
+</script>
+</body>
+</html>
