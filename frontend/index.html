@@ -51,7 +51,7 @@
 <script>
 const BACKEND_URL = location.hostname.includes("localhost")
   ? "http://127.0.0.1:8000"
-  : "https://YOUR-BACKEND-DOMAIN"; // ← replace with your deployed API hostname
+  : "https://ai.vadoo.tv/profile"; // ← replace with your deployed API hostname
 
 const spinner = document.getElementById("spinner");
 const genBtn = document.getElementById("genBtn");
@@ -109,37 +109,33 @@ function limitPlaybackTo(seconds) {
   };
 }
 
-async function callGenerateWithRetry(formData, maxRetries = 3, baseDelay = 800) {
-  let attempt = 0;
-  while (attempt <= maxRetries) {
-    const res = await fetch(`${BACKEND_URL}/generate-video`, { method: "POST", body: formData });
-    if (!res.ok) {
-      let msg = "Request failed";
-      try { const j = await res.json(); msg = j.message || msg; } catch {}
-      throw new Error(msg);
-    }
-    const data = await res.json();
-
-    if (data.status === "rate_limited") {
-      if (attempt === maxRetries) return data;
-      const delay = baseDelay * Math.pow(2, attempt); // 800, 1600, 3200...
-      await new Promise(r => setTimeout(r, delay));
-      attempt++;
-      continue;
-    }
-    return data;
+async function callGenerate(fd) {
+  const res = await fetch(`${BACKEND_URL}/generate-video`, { method: "POST", body: fd });
+  if (!res.ok) {
+    let msg = "Request failed";
+    try { const j = await res.json(); msg = j.detail || j.message || msg; } catch {}
+    throw new Error(msg);
   }
+  return res.json();
+}
+
+async function pollJob(jobId, maxMs = 180000, intervalMs = 3000) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const r = await fetch(`${BACKEND_URL}/job-status?job_id=${encodeURIComponent(jobId)}`);
+    const j = await r.json();
+    if (j.status === "complete" && j.video_url) return j;
+    if (j.status === "error") throw new Error(j.note || "Generation failed");
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  throw new Error("Timed out waiting for video");
 }
 
 async function generate() {
   const prompt = document.getElementById("prompt").value.trim();
   const style = document.getElementById("style").value;
   const duration = document.getElementById("duration").value;
-
-  if (!prompt) {
-    alert("Please enter a prompt.");
-    return;
-  }
+  if (!prompt) return alert("Please enter a prompt.");
 
   setLoading(true);
   showVideo("", "");
@@ -150,17 +146,21 @@ async function generate() {
   fd.append("duration", duration);
 
   try {
-    const data = await callGenerateWithRetry(fd);
-    if (data.status === "success") {
-      showVideo(data.video_url, data.source ? `Source: ${data.source}` : "");
-      saveHistory({ prompt, style, video_url: data.video_url, ts: Date.now() });
-      limitPlaybackTo(Number(duration) || 8);
-      if (data.note) console.log("NOTE:", data.note);
-    } else if (data.status === "rate_limited") {
-      alert("The provider is rate-limiting. Please try again shortly.");
-    } else {
-      alert("Error: " + (data.message || "Unknown error"));
+    const kick = await callGenerate(fd);
+    if (kick.status === "rate_limited") {
+      alert("Provider is rate-limiting. Please try again shortly.");
+      return;
     }
+    if (kick.status !== "queued" || !kick.job_id) {
+      throw new Error("Unexpected response from server");
+    }
+
+    // poll our backend for completion (webhook will update server-side state)
+    const done = await pollJob(kick.job_id);
+
+    showVideo(done.video_url, "Source: provider");
+    saveHistory({ prompt, style, video_url: done.video_url, ts: Date.now() });
+    limitPlaybackTo(Number(duration) || 8);
   } catch (err) {
     alert("Failed: " + err.message);
   } finally {
