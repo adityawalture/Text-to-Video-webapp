@@ -70,9 +70,10 @@ STYLE_TEMPLATES = {
 DEFAULT_STYLE = "cinematic"
 
 STYLE_TO_VADOO = {
-    "cinematic": {"theme": "Hormozi_1", "style": "None",      "voice": "Charlie", "aspect_ratio": "9:16"},
-    "anime":     {"theme": "Hormozi_1", "style": "Anime",     "voice": "Charlie", "aspect_ratio": "9:16"},
-    "realism":   {"theme": "Hormozi_1", "style": "Realistic", "voice": "Charlie", "aspect_ratio": "9:16"},
+    
+    "cinematic": {"theme": "Hormozi_1", "style": "cinematic", "voice": "Charlie", "aspect_ratio": "9:16"},
+    "anime":     {"theme": "Hormozi_1", "style": "anime",      "voice": "Charlie", "aspect_ratio": "9:16"},
+    "realism":   {"theme": "Hormozi_1", "style": "photographic","voice": "Charlie", "aspect_ratio": "9:16"},
 }
 
 def build_prompt(user_prompt: str, style_key: str = DEFAULT_STYLE) -> str:
@@ -123,6 +124,7 @@ def generate_video(
 
     # webhook callback to our backend
     webhook_url = f"{BACKEND_BASE_URL}/webhook/vadoo"
+    headers = {"X-API-KEY": VADOO_API_KEY}
 
     payload = {
         "topic": "Custom",
@@ -133,12 +135,11 @@ def generate_video(
         "style": v["style"],
         "aspect_ratio": v["aspect_ratio"],
         "duration": VADOO_DEFAULT_DURATION,
-        "include_voiceover": "1",
         "use_ai": "1",
-        "webhook_url": webhook_url,        # <-- important
-        **({"bg_music": bg_music} if bg_music else {}),
+        "include_voiceover": "1",
+        # **({"bg_music": bg_music} if bg_music else {}),
     }
-    headers = {"X-API-KEY": VADOO_API_KEY}
+    
 
     try:
         r = requests.post(VADOO_GENERATE_URL, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
