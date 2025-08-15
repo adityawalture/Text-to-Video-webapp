@@ -107,13 +107,13 @@ def generate_video(
         JOBS[job_id] = {"status": "complete", "url": cached_url, "note": "cache"}
         return {"status": "queued", "job_id": job_id, "source": "cache"}
 
-    if not VADOO_API_KEY:
-        if USE_MOCK_ON_FAIL:
-            job_id = f"mock-{hashlib.md5(key.encode()).hexdigest()[:10]}"
-            JOBS[job_id] = {"status": "complete", "url": MOCK_VIDEO_URL, "note": "no_api_key"}
-            cache.set(key, MOCK_VIDEO_URL)
-            return {"status": "queued", "job_id": job_id, "source": "mock"}
-        raise HTTPException(status_code=500, detail="Missing VADOO_API_KEY")
+    # if not VADOO_API_KEY:
+    #     # if USE_MOCK_ON_FAIL:
+    #     #     job_id = f"mock-{hashlib.md5(key.encode()).hexdigest()[:10]}"
+    #     #     JOBS[job_id] = {"status": "complete", "url": MOCK_VIDEO_URL, "note": "no_api_key"}
+    #     #     cache.set(key, MOCK_VIDEO_URL)
+    #     #     return {"status": "queued", "job_id": job_id, "source": "mock"}
+    #     # raise HTTPException(status_code=500, detail="Missing VADOO_API_KEY")
 
     # require public base url for webhook
     if not BACKEND_BASE_URL and not USE_MOCK_ON_FAIL:
