@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------- Config ----------
+# Config 
 VADOO_GENERATE_URL = "https://viralapi.vadoo.tv/api/generate_video"
 VADOO_API_KEY = os.getenv("VADOO_API_KEY", "")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "").rstrip("/")
@@ -24,16 +24,16 @@ VADOO_DEFAULT_DURATION = "30-60"
 if not BACKEND_BASE_URL and not USE_MOCK_ON_FAIL:
     raise RuntimeError("BACKEND_BASE_URL must be set for webhooks or enable USE_MOCK_ON_FAIL.")
 
-# ---------- App ----------
+# App
 app = FastAPI(title="AI Video Generator (Vadoo AI, Webhook)", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten in prod to your frontend origin
+    allow_origins=["*"],   
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------- In-memory stores ----------
+# In-memory stores
 # TTL cache for final URLs (prompt/style -> url)
 class TTLCache:
     def __init__(self, ttl_seconds: int = 3600, max_items: int = 256):
@@ -61,7 +61,7 @@ cache = TTLCache(ttl_seconds=3600, max_items=256)
 # Job store: job_id -> {"status": "queued"|"processing"|"complete"|"error", "url": Optional[str], "note": Optional[str]}
 JOBS: Dict[str, Dict[str, Optional[str]]] = {}
 
-# ---------- Prompt templates ----------
+# Prompt templates
 STYLE_TEMPLATES = {
     "cinematic": "Style: cinematic, high quality, dramatic lighting, shallow depth of field, smooth camera motion.",
     "anime":     "Style: anime, vibrant colors, dynamic motion lines, stylized character design.",
@@ -83,12 +83,12 @@ def build_prompt(user_prompt: str, style_key: str = DEFAULT_STYLE) -> str:
 def cache_key_for(prompt: str, style: str, duration_client_sec: int) -> str:
     return hashlib.sha256(f"{prompt}||{style}||{duration_client_sec}".encode("utf-8")).hexdigest()
 
-# ---------- Health ----------
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-# ---------- Generate (enqueue + webhook) ----------
+# Generate (enqueue + webhook)
 @app.post("/generate-video")
 def generate_video(
     prompt: str = Form(...),
@@ -165,7 +165,7 @@ def generate_video(
             return {"status": "queued", "job_id": job_id, "source": "mock"}
         raise HTTPException(status_code=500, detail=str(e))
 
-# ---------- Webhook endpoint (Vadoo -> us) ----------
+# Webhook endpoint
 @app.post("/webhook/vadoo")
 async def vadoo_webhook(request: Request):
     """
@@ -200,7 +200,7 @@ async def vadoo_webhook(request: Request):
 
     return {"ok": True}
 
-# ---------- Job status (frontend polls us, not Vadoo) ----------
+# Job status (frontend polls us, not Vadoo)
 @app.get("/job-status")
 def job_status(job_id: str):
     job = JOBS.get(job_id)
